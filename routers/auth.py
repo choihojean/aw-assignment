@@ -1,4 +1,6 @@
 import jwt
+import redis
+import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import SessionLocal
@@ -6,7 +8,7 @@ from models import User
 from schemas import UserCreate, Token
 from services.auth_service import get_password_hash, verify_password, create_access_token
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from config import SECRET_KEY, ALGORITHM
+from config import SECRET_KEY, ALGORITHM, REDIS_HOST, REDIS_PORT
 
 router = APIRouter()
 
@@ -19,7 +21,11 @@ def get_db():
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl = "/auth/login")
 
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    if redis_client.get(token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="토큰이 취소되었습니다")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
@@ -58,6 +64,12 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     
     access_token = create_access_token({"sub": user.username})
     return {"access_token":access_token, "token_type": "bearer"}
+
+@router.post("/logout")
+def logout(token: str = Depends(oauth2_scheme)):
+    redis_client.setex(token, 3600, "blacklisted") #토큰 1시간 블랙리스트
+    return {"message": "성공적으로 로그아웃 되었습니다"}
+
 
 @router.get("/me")
 def get_me(current_user: User = Depends(get_current_user)):
