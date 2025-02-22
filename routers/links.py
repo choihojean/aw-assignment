@@ -1,0 +1,94 @@
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.orm import Session
+from database import SessionLocal
+from models import Link, LinkPermission, User
+from schemas import LinkCreate, LinkUpdate, LinkResponse
+from routers.auth import get_current_user
+from typing import List, Optional
+
+router = APIRouter()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@router.post("/", response_model=LinkResponse)
+def create_link(link: LinkCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    new_link = Link(created_by = current_user.id, name=link.name, url=link.url, category=link.category)
+    db.add(new_link)
+    db.commit()
+    db.refresh(new_link)
+
+    return new_link
+
+
+@router.post("/{link_id}/share")
+def share_link(link_id: int, user_id: int, permission: str, db: Session =Depends(get_db), current_user: User = Depends(get_current_user)):
+    link = db.query(Link).filter(Link.id == link_id, Link.created_by == current_user.id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="링크가 찾을 수 없거나 거부되었습니다.")
+    
+    new_permission = LinkPermission(link_id=link_id, user_id=user_id, permission=permission)
+    db.add(new_permission)
+    db.commit()
+
+    return {"message":"링크가 성공적으로 공유되었습니다."}
+
+
+@router.get("/", response_model=list[LinkResponse])
+def get_links(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    links = db.query(Link).filter(Link.created_by==current_user.id).all()
+
+    return links
+
+
+@router.get("/{link_id}/permissions")
+def get_link_permissions(link_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    permissions = db.query(LinkPermission).filter(LinkPermission.link_id == link_id).all()
+
+    return permissions
+
+
+@router.get("/search", response_model = List[LinkResponse])
+def search_links(db: Session = Depends(get_db), current_user: User = Depends(get_current_user), 
+                 query: Optional[str] = Query(None, title="검색", description="이름 또는 URL 검색"), category: Optional[str] = Query(None, title="카테고리", description="특정 카테고리")):
+    filters = [Link.created_by == current_user.id]
+    if query:
+        filters.append(Link.name.ilike(f"%{query}%") | Link.url.ilike(f"%{query}"))
+    if category:
+        filters.append(Link.category == category)
+
+    links = db.query(Link).filter(*filters).all()
+
+    return links
+
+@router.put("/{link_id}", response_model=LinkResponse)
+def update_link(link_id: int, link_data: LinkUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    link = db.query(Link).filter(Link.id == link_id, Link.created_by == current_user.id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="링크를 찾을 수 없거나 수정할 수 없습니다.")
+    
+    for key, value in link_data.dic(exclude_unset=True).items():
+        setattr(link, key, value)
+    db.commit()
+    db.refresh(link)
+    
+    return link
+
+
+@router.delete("/{link_id}")
+def delete_link(link_id: int, db:Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    link = db.query(Link).filter(Link.id == link_id, Link.created_by == current_user.id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="링크를 찾을 수 없거나 삭제할 수 없습니다.")
+    
+    db.delete(link)
+    db.commit()
+    
+    return {"message":"링크가 성공적으로 삭제되었습니다."}
+
+
+
