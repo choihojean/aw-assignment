@@ -92,3 +92,17 @@ export const shareLink = async (linkId: number, username: string, permission: st
     return res.json();
 };
 
+export const updateLink = async (linkId: number, name: string, url: string, category: string) => {
+    const res = await fetch(`${API_BASE_URL}/links/${linkId}`, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({name, url, category})
+    });
+
+    if (!res.ok) {
+        throw new Error("링크 수정 실패");
+    }
+    
+    return res.json();
+};
+

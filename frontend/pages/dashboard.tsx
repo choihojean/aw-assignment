@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { fetchLinks, createLink, deleteLink, getUser, logoutUser, shareLink } from "../services/api";
+import { fetchLinks, createLink, deleteLink, shareLink, updateLink, getUser, logoutUser,  } from "../services/api";
 import { useAuthStore } from "../store/useAuthStore";
 
 interface LinkResponse {
@@ -10,6 +10,12 @@ interface LinkResponse {
     category: string;
     created_by: number;
   }
+
+interface LinkPermission {
+    link_id: number;
+    user_id: number;
+    permission: string;
+}
 
 export default function Dashboard() {
     const [userId, setUserId] = useState<number | null>(null);
@@ -21,6 +27,12 @@ export default function Dashboard() {
     const [shareUsername, setShareUsername] = useState("");
     const [sharePermission, setSharePermission] = useState("read");
     const [selectedLink, setSelectedLink] = useState<number | null>(null);
+    const [editMode, setEditMode] = useState<number | null>(null);
+    const [editName, setEditName] = useState("");
+    const [editUrl, setEditUrl] = useState("");
+    const [editCategory, setEditCategory] = useState("");
+    const [permissions, setPermissions] = useState<LinkPermission[]>([]);
+    const [viewLink, setViewLink] = useState<LinkResponse | null>(null);
     const router = useRouter();
     const token = useAuthStore((state) => state.token);
 
@@ -108,6 +120,38 @@ export default function Dashboard() {
         }
     };
 
+    const hasWritePermission = (linkId: number) => {
+        return permissions.some(
+            (perm) => perm.link_id === linkId && perm.user_id === userId && perm.permission === "write"
+        );
+    }
+
+    const handleEdit = (link: LinkResponse) => {
+        if (link.created_by !== userId && !hasWritePermission(link.id)) {
+            alert("수정 권한이 없습니다");
+            return;
+        }
+        setEditMode(link.id);
+        setEditName(link.name);
+        setEditUrl(link.url);
+        setEditCategory(link.category);
+    };
+
+    const handleUpdate = async (linkId: number) => {
+        try {
+            await updateLink(linkId, editName, editUrl, editCategory);
+            setLinks((prevLinks) =>
+                prevLinks.map((link) =>
+                    link.id === linkId ? { ...link, name: editName, url: editUrl, category: editCategory} : link
+                )
+            );
+            setEditMode(null);
+        } catch (error) {
+            console.error("링크 수정 실패: ", error)
+            alert("링크 수정 실패");
+        }
+    };
+
     return (
         <div className="p-4">
             <h1 className="text-2xl font-bold">대시보드</h1>
@@ -131,17 +175,36 @@ export default function Dashboard() {
                 ) : (
                     links.map((link) => (
                         <div key={link.id} className="border p-2 mb-2 flex justify-between">
-                            <a href={link.url} target="_blank" rel="noopener noreferrer">{link.name}</a>
-                            <div>
-                                <span className="text-gray-500">{link.created_by === userId ? "(내 링크)" : "(공유받은 링크)"}</span>
-                                <button className="bg-red-500 text-white p-1 mr-2" onClick={() => handleDelete(link.id)}>삭제</button>
-                                <button className="bg-green-500 text-white p-1" onClick={() => setSelectedLink(link.id)}>공유</button>
-                            </div>
+                            {editMode === link.id ? (
+                                <>
+                                    <input className="border p-2" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                                    <input className="border p-2" value={editUrl} onChange={(e) => setEditUrl(e.target.value)} />
+                                    <input className="border p-2" value={editCategory} onChange={(e) => setEditCategory(e.target.value)} />
+                                    <button className="bg-blue-500 text-white p-1 mr-2" onClick={() => handleUpdate(link.id)}>저장</button>
+                                    <button className="bg-gray-500 text-white p-1" onClick={() => setEditMode(null)}>취소</button>
+                                </>
+                            ) : (
+                                <>
+                                    <a href={link.url} target="_blank" rel="noopener noreferrer">{link.name}</a>
+                                    <div>
+                                        <span className="text-gray-500">{link.created_by === userId ? "내 링크" : "공유받은 링크"}</span>
+                                        <button className="bg-green-500 text-white p-1 mr-2" onClick={() => setSelectedLink(link.id)}>공유</button>
+                                        <button
+                                            className={`p-1 mr-2 ${link.created_by === userId || hasWritePermission(link.id) ? "bg-yellow-500 text-white" : "bg-gray-300 text-gray-600 cursor-not-allowed"}`}
+                                            onClick={() => handleEdit(link)}
+                                            disabled={link.created_by !== userId && !hasWritePermission(link.id)}
+                                        >
+                                            수정
+                                        </button>
+                                        <button className="bg-red-500 text-white p-1" onClick={() => handleDelete(link.id)}>삭제</button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     ))
                 )}
             </div>
-
+            
             {selectedLink && (
                 <div className="mt-6 p-4 border">
                     <h3 className="text-lg font-semibold">웹 링크 공유</h3>

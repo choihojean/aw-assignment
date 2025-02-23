@@ -89,7 +89,7 @@ def update_link(link_id: int, link_data: LinkUpdate, db: Session = Depends(get_d
     if link.created_by != current_user.id and not has_write_permission:
         raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
     
-    for key, value in link_data.dic(exclude_unset=True).items():
+    for key, value in link_data.dict(exclude_unset=True).items():
         setattr(link, key, value)
     db.commit()
     db.refresh(link)
