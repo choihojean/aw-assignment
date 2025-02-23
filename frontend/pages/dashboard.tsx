@@ -21,6 +21,7 @@ export default function Dashboard() {
     const [userId, setUserId] = useState<number | null>(null);
     const [username, setUsername] = useState("");
     const [links, setLinks] = useState<LinkResponse[]>([]);
+    const [allLinks, setAllLinks] = useState<LinkResponse[]>([]);
     const [name, setName] = useState("");
     const [url, setUrl] = useState("");
     const [category, setCategory] = useState("");
@@ -33,6 +34,9 @@ export default function Dashboard() {
     const [editCategory, setEditCategory] = useState("");
     const [permissions, setPermissions] = useState<LinkPermission[]>([]);
     const [viewLink, setViewLink] = useState<LinkResponse | null>(null);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchCategory, setSearchCategory] = useState("");
+    const [searchType, setSearchType] = useState("name");
     const router = useRouter();
     const token = useAuthStore((state) => state.token);
 
@@ -58,7 +62,10 @@ export default function Dashboard() {
             });
 
         fetchLinks()
-            .then((data) => setLinks(data))
+            .then((data) => {
+                setLinks(data);
+                setAllLinks(data);}
+            )
             .catch((error) => {
                 console.error("링크 목록을 불러오는 데 실패했습니다:", error);
             });
@@ -84,6 +91,12 @@ export default function Dashboard() {
 
     const handleDelete = async (id: number) => {
         try {
+            const link = links.find((link) => link.id === id);
+            if (link && link.created_by !== userId) {
+                setLinks((prevLinks) => prevLinks.filter((link) => link.id !== id));
+                alert("공유받은 링크가 제거되었습니다.");
+                return;
+            }
             await deleteLink(id);
             setLinks((prevLinks) => prevLinks.filter((link) => link.id !== id));
         } catch (error) {
@@ -104,6 +117,12 @@ export default function Dashboard() {
     const handleShare = async () => {
         if (!selectedLink || !shareUsername) {
             alert("공유할 사용자를 입력하세요");
+            return;
+        }
+
+        const link = links.find((link) => link.id === selectedLink);
+        if (link && link.created_by !== userId) {
+            alert("자신이 생성한 링크만 공유할 수 있습니다.");
             return;
         }
 
@@ -152,6 +171,26 @@ export default function Dashboard() {
         }
     };
 
+    const handleView = (link: LinkResponse) => {
+        setViewLink(link);
+    };
+
+    const handleSearch = () => {
+        let filteredLinks = allLinks;
+        if (searchType === "name" && searchQuery) {
+            filteredLinks = allLinks.filter((link) => link.name.toLowerCase().includes(searchQuery.toLowerCase()));
+        } else if (searchType === "category" && searchCategory) {
+            filteredLinks = allLinks.filter((link) => link.category.toLowerCase() === searchCategory.toLowerCase());
+        }
+        setLinks(filteredLinks);
+    };
+
+    const resetSearch = () => {
+        setLinks(allLinks);
+        setSearchQuery("");
+        setSearchCategory("");
+    };
+
     return (
         <div className="p-4">
             <h1 className="text-2xl font-bold">대시보드</h1>
@@ -159,6 +198,31 @@ export default function Dashboard() {
             <button className="bg-red-500 text-white p-2 mt-4" onClick={handleLogout}>
                 로그아웃
             </button>
+
+            <h2 className="text-xl font-semibold mt-6">검색</h2>
+            <div className="flex gap-2 mb-4">
+                <select className="border p-2" value={searchType} onChange={(e) => setSearchType(e.target.value)}>
+                    <option value="name">링크명</option>
+                    <option value="category">카테고리</option>
+                </select>
+                {searchType === "name" ? (
+                    <input
+                        className="border p-2"
+                        placeholder="링크 제목 검색"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                ) : (
+                    <input
+                        className="border p-2"
+                        placeholder="카테고리 검색"
+                        value={searchCategory}
+                        onChange={(e) => setSearchCategory(e.target.value)}
+                    />
+                )}
+                <button className="bg-blue-500 text-white p-2" onClick={handleSearch}>검색</button>
+                <button className="bg-gray-500 text-white p-2" onClick={resetSearch}>모든 링크</button>
+            </div>
 
             <h2 className="text-xl font-semibold mt-6">새 웹 링크 추가</h2>
             <div className="flex gap-2">
@@ -168,13 +232,16 @@ export default function Dashboard() {
                 <button className="bg-blue-500 text-white p-2" onClick={handleCreate}>추가</button>
             </div>
 
-            <h2 className="text-xl font-semibold mt-6">내 웹 링크</h2>
+            <h2 className="text-xl font-semibold mt-6">웹 링크</h2>
             <div className="mt-4">
                 {links.length === 0 ? (
                     <p>저장된 링크가 없습니다.</p>
                 ) : (
                     links.map((link) => (
                         <div key={link.id} className="border p-2 mb-2 flex justify-between">
+                            <span className="cursor-pointer text-blue-500" onClick={() => handleView(link)}>
+                                {link.name}
+                            </span>
                             {editMode === link.id ? (
                                 <>
                                     <input className="border p-2" value={editName} onChange={(e) => setEditName(e.target.value)} />
@@ -185,7 +252,6 @@ export default function Dashboard() {
                                 </>
                             ) : (
                                 <>
-                                    <a href={link.url} target="_blank" rel="noopener noreferrer">{link.name}</a>
                                     <div>
                                         <span className="text-gray-500">{link.created_by === userId ? "내 링크" : "공유받은 링크"}</span>
                                         <button className="bg-green-500 text-white p-1 mr-2" onClick={() => setSelectedLink(link.id)}>공유</button>
@@ -204,7 +270,20 @@ export default function Dashboard() {
                     ))
                 )}
             </div>
-            
+            {viewLink && (
+                <div className="fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black bg-opacity-50">
+                    <div className="bg-white p-6 rounded-lg w-96">
+                        <h3 className="text-lg font-semibold">{viewLink.name}</h3>
+                        <p className="text-gray-700">카테고리: {viewLink.category}</p>
+                        <p>
+                            <a className="text-blue-500" href={viewLink.url} target="_blank" rel="noopener noreferrer">
+                                링크 방문하기
+                            </a>
+                        </p>
+                        <button className="bg-gray-500 text-white p-2 mt-4" onClick={() => setViewLink(null)}>닫기</button>
+                    </div>
+                </div>
+            )}
             {selectedLink && (
                 <div className="mt-6 p-4 border">
                     <h3 className="text-lg font-semibold">웹 링크 공유</h3>
