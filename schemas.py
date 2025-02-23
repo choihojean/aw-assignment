@@ -19,6 +19,10 @@ class LinkCreate(BaseModel):
     url: str
     category: str
 
+class LinkShareRequest(BaseModel):
+    username: str
+    permission: str
+
 class LinkUpdate(BaseModel):
     name: Optional[str] = None
     url: Optional[str] = None
@@ -32,4 +36,4 @@ class LinkResponse(BaseModel):
     category: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True

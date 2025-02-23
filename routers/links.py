@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from database import SessionLocal
 from models import Link, LinkPermission, User
-from schemas import LinkCreate, LinkUpdate, LinkResponse
+from schemas import LinkCreate, LinkUpdate, LinkResponse, LinkShareRequest
 from routers.auth import get_current_user
 from typing import List, Optional
 
@@ -26,12 +26,17 @@ def create_link(link: LinkCreate, db: Session = Depends(get_db), current_user: U
 
 
 @router.post("/{link_id}/share")
-def share_link(link_id: int, user_id: int, permission: str, db: Session =Depends(get_db), current_user: User = Depends(get_current_user)):
+def share_link(link_id: int, request_body: LinkShareRequest, db: Session =Depends(get_db), current_user: User = Depends(get_current_user)):
     link = db.query(Link).filter(Link.id == link_id, Link.created_by == current_user.id).first()
     if not link:
         raise HTTPException(status_code=404, detail="링크가 찾을 수 없거나 거부되었습니다.")
     
-    new_permission = LinkPermission(link_id=link_id, user_id=user_id, permission=permission)
+    user_to_share = db.query(User).filter(User.username == request_body.username).first()
+    if not user_to_share:
+        raise HTTPException(status_code=404, detail="해당 ID를 가진 사용자를 찾을 수 없습니다.")
+    
+    
+    new_permission = LinkPermission(link_id=link_id, user_id=user_to_share.id, permission=request_body.permission)
     db.add(new_permission)
     db.commit()
 
@@ -40,9 +45,13 @@ def share_link(link_id: int, user_id: int, permission: str, db: Session =Depends
 
 @router.get("/", response_model=list[LinkResponse])
 def get_links(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    links = db.query(Link).filter(Link.created_by==current_user.id).all()
+    #자신의 링크 조회
+    own_links = db.query(Link).filter(Link.created_by==current_user.id).all()
 
-    return links
+    #공유 받은 링크 조회
+    shared_links = ( db.query(Link).join(LinkPermission, Link.id == LinkPermission.link_id).filter(LinkPermission.user_id == current_user.id).all())
+
+    return own_links + shared_links
 
 
 @router.get("/{link_id}/permissions")
@@ -67,9 +76,18 @@ def search_links(db: Session = Depends(get_db), current_user: User = Depends(get
 
 @router.put("/{link_id}", response_model=LinkResponse)
 def update_link(link_id: int, link_data: LinkUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    link = db.query(Link).filter(Link.id == link_id, Link.created_by == current_user.id).first()
+    link = db.query(Link).filter(Link.id == link_id).first()
     if not link:
-        raise HTTPException(status_code=404, detail="링크를 찾을 수 없거나 수정할 수 없습니다.")
+        raise HTTPException(status_code=404, detail="링크를 찾을 수 없습니다.")
+    
+    has_write_permission = db.query(LinkPermission).filter(
+        LinkPermission.link_id == link_id,
+        LinkPermission.user_id == current_user.id,
+        LinkPermission.permission == "write"
+    ).first()
+
+    if link.created_by != current_user.id and not has_write_permission:
+        raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
     
     for key, value in link_data.dic(exclude_unset=True).items():
         setattr(link, key, value)
