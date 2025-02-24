@@ -26,21 +26,42 @@ def create_link(link: LinkCreate, db: Session = Depends(get_db), current_user: U
 
 
 @router.post("/{link_id}/share")
-def share_link(link_id: int, request_body: LinkShareRequest, db: Session =Depends(get_db), current_user: User = Depends(get_current_user)):
-    link = db.query(Link).filter(Link.id == link_id, Link.created_by == current_user.id).first()
-    if not link:
-        raise HTTPException(status_code=404, detail="링크가 찾을 수 없거나 거부되었습니다.")
+def share_link(link_id: int, share_data: LinkShareRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if share_data.username == current_user.username:
+        raise HTTPException(status_code=400, detail="자기 자신에게는 공유할 수 없습니다.")
     
-    user_to_share = db.query(User).filter(User.username == request_body.username).first()
+    user_to_share = db.query(User).filter(User.username == share_data.username).first()
     if not user_to_share:
-        raise HTTPException(status_code=404, detail="해당 ID를 가진 사용자를 찾을 수 없습니다.")
-    
-    
-    new_permission = LinkPermission(link_id=link_id, user_id=user_to_share.id, permission=request_body.permission)
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    existing_permission = db.query(LinkPermission).filter(
+        LinkPermission.link_id == link_id, 
+        LinkPermission.user_id == user_to_share.id
+    ).first()
+
+    if existing_permission:
+        raise HTTPException(status_code=400, detail="이미 공유된 사용자입니다.")
+
+    new_permission = LinkPermission(link_id=link_id, user_id=user_to_share.id, permission=share_data.permission)
     db.add(new_permission)
     db.commit()
 
-    return {"message":"링크가 성공적으로 공유되었습니다."}
+    return {"message": "링크가 성공적으로 공유되었습니다."}
+
+@router.post("/{link_id}/unshare")
+def unshare_link(link_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    permission = db.query(LinkPermission).filter(
+        LinkPermission.link_id == link_id, 
+        LinkPermission.user_id == current_user.id
+    ).first()
+
+    if not permission:
+        raise HTTPException(status_code=404, detail="공유받은 링크를 찾을 수 없습니다.")
+
+    db.delete(permission)
+    db.commit()
+
+    return {"message": "공유받은 링크가 목록에서 제거되었습니다."}
 
 
 @router.get("/", response_model=list[LinkResponse])
@@ -86,8 +107,9 @@ def update_link(link_id: int, link_data: LinkUpdate, db: Session = Depends(get_d
         LinkPermission.permission == "write"
     ).first()
 
-    if link.created_by != current_user.id and not has_write_permission:
-        raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
+    if link.created_by != current_user.id:
+        if not has_write_permission:
+            raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
     
     for key, value in link_data.dict(exclude_unset=True).items():
         setattr(link, key, value)

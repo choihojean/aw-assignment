@@ -2,7 +2,7 @@ import { useAuthStore } from "../store/useAuthStore";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
-const getAuthHeaders = (): Record<string, string> => {
+export const getAuthHeaders = (): Record<string, string> => {
     const token = useAuthStore.getState().token;
     if (!token) {
         console.warn("JWT 토큰이 없습니다. 인증이 필요한 요청이 거부될 수 있습니다.");
@@ -106,3 +106,13 @@ export const updateLink = async (linkId: number, name: string, url: string, cate
     return res.json();
 };
 
+export const searchLinks = async (queryParam: string) => {
+    const res = await fetch(`${API_BASE_URL}/links/search?${queryParam}`, {
+        headers: getAuthHeaders(),
+    });
+
+    if (!res.ok) {
+        throw new Error("검색 요청 실패");
+    }
+    return res.json();
+};

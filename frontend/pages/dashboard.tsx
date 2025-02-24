@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { fetchLinks, createLink, deleteLink, shareLink, updateLink, getUser, logoutUser,  } from "../services/api";
+import { getAuthHeaders, fetchLinks, createLink, deleteLink, shareLink, searchLinks, updateLink, getUser, logoutUser  } from "../services/api";
 import { useAuthStore } from "../store/useAuthStore";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 interface LinkResponse {
     id: number;
@@ -21,7 +23,6 @@ export default function Dashboard() {
     const [userId, setUserId] = useState<number | null>(null);
     const [username, setUsername] = useState("");
     const [links, setLinks] = useState<LinkResponse[]>([]);
-    const [allLinks, setAllLinks] = useState<LinkResponse[]>([]);
     const [name, setName] = useState("");
     const [url, setUrl] = useState("");
     const [category, setCategory] = useState("");
@@ -39,6 +40,31 @@ export default function Dashboard() {
     const [searchType, setSearchType] = useState("name");
     const router = useRouter();
     const token = useAuthStore((state) => state.token);
+
+    const fetchAllLinks = async () => {
+        try {
+            const data = await fetchLinks();
+            setLinks(data);
+    
+            // 공유된 링크의 권한 정보를 가져옴
+            const permissionsData = await Promise.all(
+                data.map(async (link: LinkResponse) => {
+                    const res = await fetch(`${API_BASE_URL}/links/${link.id}/permissions`, {
+                        headers: getAuthHeaders(),
+                    });
+                    if (!res.ok) return null;
+                    return res.json();
+                })
+            );
+    
+            // 권한 정보 업데이트
+            setPermissions(permissionsData.flat().filter(Boolean));
+        } catch (error) {
+            console.error("링크 목록을 불러오는 데 실패했습니다:", error);
+        }
+    };
+
+
 
     useEffect(() => {
         if (!token) {
@@ -61,14 +87,7 @@ export default function Dashboard() {
                 router.push("/login");
             });
 
-        fetchLinks()
-            .then((data) => {
-                setLinks(data);
-                setAllLinks(data);}
-            )
-            .catch((error) => {
-                console.error("링크 목록을 불러오는 데 실패했습니다:", error);
-            });
+        fetchAllLinks();
     }, [token]);
 
     const handleCreate = async () => {
@@ -89,16 +108,18 @@ export default function Dashboard() {
         }
     };
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async (id: number, createdBy: number) => {
         try {
-            const link = links.find((link) => link.id === id);
-            if (link && link.created_by !== userId) {
-                setLinks((prevLinks) => prevLinks.filter((link) => link.id !== id));
-                alert("공유받은 링크가 제거되었습니다.");
-                return;
+            if (createdBy === userId) {
+                await deleteLink(id);
+            } else {
+                await fetch(`${API_BASE_URL}/links/${id}/unshare`, {
+                    method: "POST",
+                    headers: getAuthHeaders(),
+                });
             }
-            await deleteLink(id);
-            setLinks((prevLinks) => prevLinks.filter((link) => link.id !== id));
+    
+            fetchAllLinks();
         } catch (error) {
             console.error("웹 링크 삭제 실패:", error);
             alert("웹 링크 삭제에 실패했습니다.");
@@ -119,20 +140,24 @@ export default function Dashboard() {
             alert("공유할 사용자를 입력하세요");
             return;
         }
-
-        const link = links.find((link) => link.id === selectedLink);
-        if (link && link.created_by !== userId) {
-            alert("자신이 생성한 링크만 공유할 수 있습니다.");
+    
+        if (shareUsername === username) {
+            alert("자기 자신에게는 공유할 수 없습니다.");
             return;
         }
-
+    
         try {
-            await shareLink(selectedLink, shareUsername, sharePermission);
-            alert("공유되었습니다.");
-
+            const res = await shareLink(selectedLink, shareUsername, sharePermission);
+            if (res.success) {
+                alert("공유되었습니다.");
+            } else {
+                alert(res.message || "공유에 실패했습니다.");
+            }
+    
             setSelectedLink(null);
             setShareUsername("");
             setSharePermission("read");
+            fetchAllLinks();
         } catch (error) {
             console.error("공유 실패:", error);
             alert("공유에 실패했습니다.");
@@ -140,10 +165,12 @@ export default function Dashboard() {
     };
 
     const hasWritePermission = (linkId: number) => {
+        if (!userId) return false;
         return permissions.some(
             (perm) => perm.link_id === linkId && perm.user_id === userId && perm.permission === "write"
         );
-    }
+    };
+    
 
     const handleEdit = (link: LinkResponse) => {
         if (link.created_by !== userId && !hasWritePermission(link.id)) {
@@ -157,16 +184,14 @@ export default function Dashboard() {
     };
 
     const handleUpdate = async (linkId: number) => {
+        if (!editMode) return;
+    
         try {
             await updateLink(linkId, editName, editUrl, editCategory);
-            setLinks((prevLinks) =>
-                prevLinks.map((link) =>
-                    link.id === linkId ? { ...link, name: editName, url: editUrl, category: editCategory} : link
-                )
-            );
+            fetchAllLinks();
             setEditMode(null);
         } catch (error) {
-            console.error("링크 수정 실패: ", error)
+            console.error("링크 수정 실패: ", error);
             alert("링크 수정 실패");
         }
     };
@@ -175,25 +200,31 @@ export default function Dashboard() {
         setViewLink(link);
     };
 
-    const handleSearch = () => {
-        let filteredLinks = allLinks;
-        if (searchType === "name" && searchQuery) {
-            filteredLinks = allLinks.filter((link) => link.name.toLowerCase().includes(searchQuery.toLowerCase()));
-        } else if (searchType === "category" && searchCategory) {
-            filteredLinks = allLinks.filter((link) => link.category.toLowerCase() === searchCategory.toLowerCase());
+    const handleSearch = async () => {
+        if (!searchQuery && !searchCategory) {
+            alert("검색어를 입력해주세요.");
+            return;
         }
-        setLinks(filteredLinks);
+    
+        try {
+            const queryParam = searchType === "name" ? `query=${encodeURIComponent(searchQuery)}` : `category=${encodeURIComponent(searchCategory)}`;
+            const searchResult = await searchLinks(queryParam);
+            setLinks(searchResult);
+        } catch (error) {
+            console.error("검색 실패:", error);
+            alert("검색에 실패했습니다.");
+        }
     };
 
     const resetSearch = () => {
-        setLinks(allLinks);
+        fetchAllLinks();
         setSearchQuery("");
         setSearchCategory("");
     };
 
     return (
         <div className="p-4">
-            <h1 className="text-2xl font-bold">대시보드</h1>
+            <h1 className="text-2xl font-bold">웹 링크보드</h1>
             <p>안녕하세요, {username}님!</p>
             <button className="bg-red-500 text-white p-2 mt-4" onClick={handleLogout}>
                 로그아웃
@@ -258,11 +289,11 @@ export default function Dashboard() {
                                         <button
                                             className={`p-1 mr-2 ${link.created_by === userId || hasWritePermission(link.id) ? "bg-yellow-500 text-white" : "bg-gray-300 text-gray-600 cursor-not-allowed"}`}
                                             onClick={() => handleEdit(link)}
-                                            disabled={link.created_by !== userId && !hasWritePermission(link.id)}
-                                        >
-                                            수정
+                                            disabled={link.created_by !== userId && !hasWritePermission(link.id)}>
+                                                수정
                                         </button>
-                                        <button className="bg-red-500 text-white p-1" onClick={() => handleDelete(link.id)}>삭제</button>
+
+                                        <button className="bg-red-500 text-white p-1" onClick={() => handleDelete(link.id, link.created_by)}>삭제</button>
                                     </div>
                                 </>
                             )}
