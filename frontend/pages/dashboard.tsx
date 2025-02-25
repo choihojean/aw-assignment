@@ -245,7 +245,7 @@ export default function Dashboard() {
     return (
         <div className="p-4">
             <h1 className="text-2xl font-bold">웹 링크보드</h1>
-            <p>안녕하세요, {username}님! <button className="bg-red-500 text-white p-1 mt-4" onClick={handleLogout}>로그아웃</button></p>
+            <p>안녕하세요, {username}님! <button className="bg-red-500 text-white p-1 mt-4 rounded" onClick={handleLogout}>로그아웃</button></p>
             
 
             <h2 className="text-xl font-semibold mt-6">검색</h2>
@@ -269,11 +269,11 @@ export default function Dashboard() {
                         onChange={(e) => setSearchCategory(e.target.value)}
                     />
                 )}
-                <button className="bg-blue-500 text-white p-2" onClick={handleSearch}>검색</button>
-                <button className="bg-gray-500 text-white p-2" onClick={resetSearch}>모든 링크</button>
+                <button className="bg-blue-500 text-white p-2 rounded" onClick={handleSearch}>검색</button>
+                <button className="bg-gray-500 text-white p-2 rounded" onClick={resetSearch}>모든 링크</button>
             </div>
 
-            {/* 웹 링크 섹션 */}
+            {/*웹 링크 섹션*/}
             <div className="flex justify-between items-center mt-6">
                 <div className="flex items-center gap-4">
                     <h2 className="text-xl font-semibold">웹 링크</h2>
@@ -282,13 +282,13 @@ export default function Dashboard() {
                             <option key={cat} value={cat}>{cat}</option>
                         ))}
                     </select>
-                    <button className="bg-blue-500 text-white p-2" onClick={() => setShowAddForm(!showAddForm)}>
+                    <button className="bg-blue-500 text-white p-2 rounded" onClick={() => setShowAddForm(!showAddForm)}>
                         {showAddForm ? "닫기" : "새 링크 추가"}
                     </button>
                 </div>
             </div>
 
-            {/* 웹 링크 추가 폼 (버튼 클릭 시 표시) */}
+            {/*웹 링크 추가 폼*/}
             {showAddForm && (
                 <div className="flex gap-2 mt-4">
                     <input className="border p-2" placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />
@@ -304,34 +304,37 @@ export default function Dashboard() {
                     <p>저장된 링크가 없습니다.</p>
                 ) : (
                     links.map((link) => (
-                        <div key={link.id} className="border p-2 mb-2 flex justify-between">
-                            {link.name}
-                            <div>
-                                <span className="text-gray-500">{link.created_by === userId ? "내 링크 " : "공유받은 링크 "}</span>
-                                <button
-                                    className={`p-1 mr-2 ${
-                                        canShareLink(link.id) ? "bg-green-500 text-white" : "bg-gray-300 text-gray-600 cursor-not-allowed"
-                                    }`}
+                        <div key={link.id} className="border p-3 mb-2 flex justify-between items-center">
+                            <div className="flex items-center gap-4">
+                                <a href={link.url} target="_blank" rel="noopener noreferrer"
+                                    className="text-lg font-semibold text-blue-600 hover:underline">{link.name}</a>
+                                <span className="text-gray-500 text-sm truncate max-w-xs">{link.url}</span>
+                                <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded text-sm">{link.category}</span>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <span className="text-gray-500">{link.created_by === userId ? "내 링크" : "공유받은 링크"}</span>
+                                <button 
+                                    className={`p-1 ${canShareLink(link.id) ? "bg-green-500 text-white rounded" : "bg-gray-300 text-gray-600 rounded cursor-not-allowed"}`}
                                     onClick={() => setSelectedLink(link.id)}
-                                    disabled={!canShareLink(link.id)}
-                                >
-                                    공유
-                                </button>
+                                    disabled={!canShareLink(link.id)}>공유</button>
+
+                                
                                 <button
-                                    className={`p-1 mr-2 ${link.created_by === userId || hasWritePermission(link.id) ? "bg-yellow-500 text-white" : "bg-gray-300 text-gray-600 cursor-not-allowed"}`}
+                                    className={`p-1 ${
+                                        link.created_by === userId || hasWritePermission(link.id) ? "bg-yellow-500 text-white rounded" : "bg-gray-300 text-gray-600 cursor-not-allowed rounded"}`}
                                     onClick={() => handleEdit(link)}
-                                    disabled={!(link.created_by === userId || hasWritePermission(link.id))}
-                                >
-                                    수정
+                                    disabled={!(link.created_by === userId || hasWritePermission(link.id))}>수정
                                 </button>
-                                <button className="bg-red-500 text-white p-1" onClick={() => handleDelete(link.id, link.created_by)}>삭제</button>
+
+                                <button className="bg-red-500 text-white p-1 rounded" onClick={() => handleDelete(link.id, link.created_by)}>삭제</button>
                             </div>
                         </div>
                     ))
                 )}
             </div>
 
-            {/* 공유 모달 UI */}
+            {/*공유 모달 UI*/}
             {selectedLink && (
                 <div className="fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black bg-opacity-50">
                     <div className="bg-white p-6 rounded-lg w-96 shadow-lg">
@@ -354,7 +357,7 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* 수정 모달 UI */}
+            {/*수정 모달 UI*/}
             {editMode && (
                 <div className="fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black bg-opacity-50">
                     <div className="bg-white p-6 rounded-lg w-96 shadow-lg">

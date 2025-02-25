@@ -54,7 +54,8 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     
-    return {"message":"회원가입이 성공적으로 완료되었습니다."}
+    access_token = create_access_token({"sub": new_user.username})
+    return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
