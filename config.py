@@ -1,4 +1,5 @@
 import os
+import redis
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,3 +10,6 @@ ALGORITHM = os.getenv("ALGORITHM")
 REDIS_HOST=os.getenv("REDIS_HOST")
 REDIS_PORT=os.getenv("REDIS_PORT")
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+REFRESH_TOKEN_EXPIRE_DAYS = 3
+
+redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)

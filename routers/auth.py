@@ -8,7 +8,7 @@ from models import User
 from schemas import UserCreate, Token
 from services.auth_service import get_password_hash, verify_password, create_access_token
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from config import SECRET_KEY, ALGORITHM, REDIS_HOST, REDIS_PORT
+from config import SECRET_KEY, ALGORITHM, REDIS_HOST, REDIS_PORT, redis_client
 
 router = APIRouter()
 
@@ -20,8 +20,6 @@ def get_db():
         db.close()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl = "/auth/login")
-
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     if redis_client.get(token):
@@ -54,8 +52,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     
-    access_token = create_access_token({"sub": new_user.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"message":"회원가입이 성공적으로 완료되었습니다."}
 
 @router.post("/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
