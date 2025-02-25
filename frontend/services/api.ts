@@ -59,10 +59,16 @@ export const getUser = async () => {
     }
 };
 
-export const fetchLinks = async () => {
-    const res = await fetch(`${API_BASE_URL}/links/`, {
+export const fetchLinks = async (category?: string) => {
+    let url = `${API_BASE_URL}/links/`;
+    if (category && category !== "전체") {
+        url += `?category=${encodeURIComponent(category)}`;
+    }
+
+    const res = await fetch(url, {
         headers: getAuthHeaders(),
     });
+
     return res.json();
 };
 
@@ -114,5 +120,17 @@ export const searchLinks = async (queryParam: string) => {
     if (!res.ok) {
         throw new Error("검색 요청 실패");
     }
+    return res.json();
+};
+
+export const getCategories = async () => {
+    const res = await fetch(`${API_BASE_URL}/links/categories`, {
+        headers: getAuthHeaders(),
+    });
+
+    if (!res.ok) {
+        throw new Error("카테고리 목록 불러오기 실패");
+    }
+
     return res.json();
 };

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { getAuthHeaders, fetchLinks, createLink, deleteLink, shareLink, searchLinks, updateLink, getUser, logoutUser  } from "../services/api";
+import { getAuthHeaders, fetchLinks, createLink, deleteLink, shareLink, searchLinks, updateLink, getUser, logoutUser, getCategories  } from "../services/api";
 import { useAuthStore } from "../store/useAuthStore";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -26,6 +26,8 @@ export default function Dashboard() {
     const [name, setName] = useState("");
     const [url, setUrl] = useState("");
     const [category, setCategory] = useState("");
+    const [categories, setCategories] = useState<string[]>(["전체"]);
+    const [selectedCategory, setSelectedCategory] = useState("전체");
     const [shareUsername, setShareUsername] = useState("");
     const [sharePermission, setSharePermission] = useState("read");
     const [selectedLink, setSelectedLink] = useState<number | null>(null);
@@ -34,10 +36,10 @@ export default function Dashboard() {
     const [editUrl, setEditUrl] = useState("");
     const [editCategory, setEditCategory] = useState("");
     const [permissions, setPermissions] = useState<LinkPermission[]>([]);
-    const [viewLink, setViewLink] = useState<LinkResponse | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [searchCategory, setSearchCategory] = useState("");
     const [searchType, setSearchType] = useState("name");
+    const [showAddForm, setShowAddForm] = useState(false);
     const router = useRouter();
     const token = useAuthStore((state) => state.token);
 
@@ -46,7 +48,7 @@ export default function Dashboard() {
             const data = await fetchLinks();
             setLinks(data);
     
-            // 공유된 링크의 권한 정보를 가져옴
+            //공유된 링크의 권한 정보 가져오기
             const permissionsData = await Promise.all(
                 data.map(async (link: LinkResponse) => {
                     const res = await fetch(`${API_BASE_URL}/links/${link.id}/permissions`, {
@@ -57,7 +59,7 @@ export default function Dashboard() {
                 })
             );
     
-            // 권한 정보 업데이트
+            //권한 정보 업데이트
             setPermissions(permissionsData.flat().filter(Boolean));
         } catch (error) {
             console.error("링크 목록을 불러오는 데 실패했습니다:", error);
@@ -72,33 +74,51 @@ export default function Dashboard() {
             return;
         }
 
-        getUser()
-            .then((data) => {
-                if (data.username) {
-                    setUsername(data.username);
-                    setUserId(data.id);
-                } else {
-                    useAuthStore.getState().logout();
-                    router.push("/login");
-                }
-            })
-            .catch((error) => {
-                console.error("사용자 정보를 불러오는 데 실패했습니다:", error);
-                router.push("/login");
-            });
+        getUser().then((data) => {
+            if (data.username) {
+                setUsername(data.username);
+                setUserId(data.id);
+                fetchCategories();
+                fetchAllLinks();
+            } else {
+                useAuthStore.getState().logout();
+            }
+        });
+    }, []);
 
-        fetchAllLinks();
-    }, [token]);
+    //사용자의 웹 링크 목록에 있는 모든 카테고리를 가져옴
+    const fetchCategories = async () => {
+        try {
+            const categoriesData = await getCategories();
+            setCategories(["전체", ...categoriesData]);
+        } catch (error) {
+            console.error("카테고리 목록을 불러오는 데 실패했습니다:", error);
+        }
+    };
+
+    //카테고리를 선택하면 해당 카테고리에 해당하는 링크만 가져옴
+    const handleCategoryChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const category = e.target.value;
+        setSelectedCategory(category);
+
+        try {
+            const filteredLinks = await fetchLinks(category);
+            setLinks(filteredLinks);
+        } catch (error) {
+            console.error("링크 필터링 실패:", error);
+        }
+    };
 
     const handleCreate = async () => {
         if (!name || !url || !category) {
             alert("모든 필드를 입력해야 합니다.");
             return;
         }
-
+    
         try {
-            const newLink = await createLink(name, url, category);
-            setLinks((prevLinks) => [...prevLinks, newLink]);
+            await createLink(name, url, category);
+            await fetchAllLinks();
+            await fetchCategories();
             setName("");
             setUrl("");
             setCategory("");
@@ -119,7 +139,8 @@ export default function Dashboard() {
                 });
             }
     
-            fetchAllLinks();
+            await fetchAllLinks();
+            fetchCategories();
         } catch (error) {
             console.error("웹 링크 삭제 실패:", error);
             alert("웹 링크 삭제에 실패했습니다.");
@@ -142,17 +163,13 @@ export default function Dashboard() {
         }
     
         if (shareUsername === username) {
-            alert("자기 자신에게는 공유할 수 없습니다.");
+            alert("자신에게는 공유할 수 없습니다.");
             return;
         }
     
         try {
             const res = await shareLink(selectedLink, shareUsername, sharePermission);
-            if (res.success) {
-                alert("공유되었습니다.");
-            } else {
-                alert(res.message || "공유에 실패했습니다.");
-            }
+            alert(res.message || "권한이 성공적으로 변경되었습니다.");
     
             setSelectedLink(null);
             setShareUsername("");
@@ -163,6 +180,13 @@ export default function Dashboard() {
             alert("공유에 실패했습니다.");
         }
     };
+    
+    const canShareLink = (linkId: number) => {
+        const link = links.find((l) => l.id === linkId);
+        return link ? link.created_by === userId || hasWritePermission(linkId) : false;
+    };
+    
+    
 
     const hasWritePermission = (linkId: number) => {
         if (!userId) return false;
@@ -173,7 +197,7 @@ export default function Dashboard() {
     
 
     const handleEdit = (link: LinkResponse) => {
-        if (link.created_by !== userId && !hasWritePermission(link.id)) {
+        if (!(link.created_by === userId || hasWritePermission(link.id))) {
             alert("수정 권한이 없습니다");
             return;
         }
@@ -194,10 +218,6 @@ export default function Dashboard() {
             console.error("링크 수정 실패: ", error);
             alert("링크 수정 실패");
         }
-    };
-
-    const handleView = (link: LinkResponse) => {
-        setViewLink(link);
     };
 
     const handleSearch = async () => {
@@ -225,10 +245,8 @@ export default function Dashboard() {
     return (
         <div className="p-4">
             <h1 className="text-2xl font-bold">웹 링크보드</h1>
-            <p>안녕하세요, {username}님!</p>
-            <button className="bg-red-500 text-white p-2 mt-4" onClick={handleLogout}>
-                로그아웃
-            </button>
+            <p>안녕하세요, {username}님! <button className="bg-red-500 text-white p-1 mt-4" onClick={handleLogout}>로그아웃</button></p>
+            
 
             <h2 className="text-xl font-semibold mt-6">검색</h2>
             <div className="flex gap-2 mb-4">
@@ -255,76 +273,115 @@ export default function Dashboard() {
                 <button className="bg-gray-500 text-white p-2" onClick={resetSearch}>모든 링크</button>
             </div>
 
-            <h2 className="text-xl font-semibold mt-6">새 웹 링크 추가</h2>
-            <div className="flex gap-2">
-                <input className="border p-2" placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />
-                <input className="border p-2" placeholder="URL" value={url} onChange={(e) => setUrl(e.target.value)} />
-                <input className="border p-2" placeholder="카테고리" value={category} onChange={(e) => setCategory(e.target.value)} />
-                <button className="bg-blue-500 text-white p-2" onClick={handleCreate}>추가</button>
+            {/* 웹 링크 섹션 */}
+            <div className="flex justify-between items-center mt-6">
+                <div className="flex items-center gap-4">
+                    <h2 className="text-xl font-semibold">웹 링크</h2>
+                    <select className="border p-2" value={selectedCategory} onChange={handleCategoryChange}>
+                        {categories.map((cat) => (
+                            <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                    </select>
+                    <button className="bg-blue-500 text-white p-2" onClick={() => setShowAddForm(!showAddForm)}>
+                        {showAddForm ? "닫기" : "새 링크 추가"}
+                    </button>
+                </div>
             </div>
 
-            <h2 className="text-xl font-semibold mt-6">웹 링크</h2>
+            {/* 웹 링크 추가 폼 (버튼 클릭 시 표시) */}
+            {showAddForm && (
+                <div className="flex gap-2 mt-4">
+                    <input className="border p-2" placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} />
+                    <input className="border p-2" placeholder="URL" value={url} onChange={(e) => setUrl(e.target.value)} />
+                    <input className="border p-2" placeholder="카테고리" value={category} onChange={(e) => setCategory(e.target.value)} />
+                    <button className="bg-blue-500 text-white p-2" onClick={handleCreate}>추가</button>
+                </div>
+            )}
+
+            {/* 웹 링크 목록 */}
             <div className="mt-4">
                 {links.length === 0 ? (
                     <p>저장된 링크가 없습니다.</p>
                 ) : (
                     links.map((link) => (
                         <div key={link.id} className="border p-2 mb-2 flex justify-between">
-                            <span className="cursor-pointer text-blue-500" onClick={() => handleView(link)}>
-                                {link.name}
-                            </span>
-                            {editMode === link.id ? (
-                                <>
-                                    <input className="border p-2" value={editName} onChange={(e) => setEditName(e.target.value)} />
-                                    <input className="border p-2" value={editUrl} onChange={(e) => setEditUrl(e.target.value)} />
-                                    <input className="border p-2" value={editCategory} onChange={(e) => setEditCategory(e.target.value)} />
-                                    <button className="bg-blue-500 text-white p-1 mr-2" onClick={() => handleUpdate(link.id)}>저장</button>
-                                    <button className="bg-gray-500 text-white p-1" onClick={() => setEditMode(null)}>취소</button>
-                                </>
-                            ) : (
-                                <>
-                                    <div>
-                                        <span className="text-gray-500">{link.created_by === userId ? "내 링크" : "공유받은 링크"}</span>
-                                        <button className="bg-green-500 text-white p-1 mr-2" onClick={() => setSelectedLink(link.id)}>공유</button>
-                                        <button
-                                            className={`p-1 mr-2 ${link.created_by === userId || hasWritePermission(link.id) ? "bg-yellow-500 text-white" : "bg-gray-300 text-gray-600 cursor-not-allowed"}`}
-                                            onClick={() => handleEdit(link)}
-                                            disabled={link.created_by !== userId && !hasWritePermission(link.id)}>
-                                                수정
-                                        </button>
-
-                                        <button className="bg-red-500 text-white p-1" onClick={() => handleDelete(link.id, link.created_by)}>삭제</button>
-                                    </div>
-                                </>
-                            )}
+                            {link.name}
+                            <div>
+                                <span className="text-gray-500">{link.created_by === userId ? "내 링크 " : "공유받은 링크 "}</span>
+                                <button
+                                    className={`p-1 mr-2 ${
+                                        canShareLink(link.id) ? "bg-green-500 text-white" : "bg-gray-300 text-gray-600 cursor-not-allowed"
+                                    }`}
+                                    onClick={() => setSelectedLink(link.id)}
+                                    disabled={!canShareLink(link.id)}
+                                >
+                                    공유
+                                </button>
+                                <button
+                                    className={`p-1 mr-2 ${link.created_by === userId || hasWritePermission(link.id) ? "bg-yellow-500 text-white" : "bg-gray-300 text-gray-600 cursor-not-allowed"}`}
+                                    onClick={() => handleEdit(link)}
+                                    disabled={!(link.created_by === userId || hasWritePermission(link.id))}
+                                >
+                                    수정
+                                </button>
+                                <button className="bg-red-500 text-white p-1" onClick={() => handleDelete(link.id, link.created_by)}>삭제</button>
+                            </div>
                         </div>
                     ))
                 )}
             </div>
-            {viewLink && (
+
+            {/* 공유 모달 UI */}
+            {selectedLink && (
                 <div className="fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black bg-opacity-50">
-                    <div className="bg-white p-6 rounded-lg w-96">
-                        <h3 className="text-lg font-semibold">{viewLink.name}</h3>
-                        <p className="text-gray-700">카테고리: {viewLink.category}</p>
-                        <p>
-                            <a className="text-blue-500" href={viewLink.url} target="_blank" rel="noopener noreferrer">
-                                링크 방문하기
-                            </a>
-                        </p>
-                        <button className="bg-gray-500 text-white p-2 mt-4" onClick={() => setViewLink(null)}>닫기</button>
+                    <div className="bg-white p-6 rounded-lg w-96 shadow-lg">
+                        <h3 className="text-lg font-semibold">웹 링크 공유</h3>
+                        <input 
+                            className="border p-2 w-full mb-2"
+                            placeholder="공유할 사용자 입력"
+                            value={shareUsername}
+                            onChange={(e) => setShareUsername(e.target.value)}
+                        />
+                        <select className="border p-2 w-full mb-2" value={sharePermission} onChange={(e) => setSharePermission(e.target.value)}>
+                            <option value="read">읽기</option>
+                            <option value="write">쓰기</option>
+                        </select>
+                        <div className="flex justify-end">
+                            <button className="bg-blue-500 text-white p-2 mr-2" onClick={handleShare}>공유</button>
+                            <button className="bg-gray-500 text-white p-2" onClick={() => setSelectedLink(null)}>닫기</button>
+                        </div>
                     </div>
                 </div>
             )}
-            {selectedLink && (
-                <div className="mt-6 p-4 border">
-                    <h3 className="text-lg font-semibold">웹 링크 공유</h3>
-                    <input className="border p-2 mr-2" placeholder="공유할 사용자 입력" value={shareUsername} onChange={(e) => setShareUsername(e.target.value)} />
-                    <select className="border p-2 mr-2" value={sharePermission} onChange={(e) => setSharePermission(e.target.value)}>
-                        <option value="read">읽기</option>
-                        <option value="write">쓰기</option>
-                    </select>
-                    <button className="bg-blue-500 text-white p-2" onClick={handleShare}>공유</button>
-                    <button className="bg-gray-500 text-white p-2 ml-2" onClick={() => setSelectedLink(null)}>취소</button>
+
+            {/* 수정 모달 UI */}
+            {editMode && (
+                <div className="fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black bg-opacity-50">
+                    <div className="bg-white p-6 rounded-lg w-96 shadow-lg">
+                        <h3 className="text-lg font-semibold">웹 링크 수정</h3>
+                        <input 
+                            className="border p-2 w-full mb-2"
+                            placeholder="이름"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                        />
+                        <input 
+                            className="border p-2 w-full mb-2"
+                            placeholder="URL"
+                            value={editUrl}
+                            onChange={(e) => setEditUrl(e.target.value)}
+                        />
+                        <input 
+                            className="border p-2 w-full mb-2"
+                            placeholder="카테고리"
+                            value={editCategory}
+                            onChange={(e) => setEditCategory(e.target.value)}
+                        />
+                        <div className="flex justify-end">
+                            <button className="bg-blue-500 text-white p-2 mr-2" onClick={() => handleUpdate(editMode)}>저장</button>
+                            <button className="bg-gray-500 text-white p-2" onClick={() => setEditMode(null)}>닫기</button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
