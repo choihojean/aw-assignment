@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { registerUser } from "../services/api";
+import { registerUser } from "../services/authApi";
 import { useRouter } from "next/router";
 import { useAuthStore } from "../store/useAuthStore";
 

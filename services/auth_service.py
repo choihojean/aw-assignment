@@ -1,9 +1,7 @@
 import jwt
 import bcrypt
-import redis
-from fastapi import HTTPException, status
 from datetime import datetime, timedelta
-from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS, redis_client
+from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 
 def get_password_hash(password: str):

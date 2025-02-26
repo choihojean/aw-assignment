@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { fetchWithAuth, fetchLinks, createLink, deleteLink, shareLink, searchLinks, updateLink, getUser, logoutUser, getCategories  } from "../services/api";
+import { fetchWithAuth  } from "../services/api";
+import { fetchLinks, createLink, deleteLink, shareLink, searchLinks, updateLink, getCategories } from "../services/linkApi";
+import { getUser, logoutUser } from "../services/authApi";
 import { useAuthStore } from "../store/useAuthStore";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";

@@ -85,7 +85,7 @@ def get_links(db: Session = Depends(get_db), current_user: User = Depends(get_cu
     own_links_query = db.query(Link).filter(Link.created_by == current_user.id)
     shared_links_query = db.query(Link).join(LinkPermission).filter(LinkPermission.user_id == current_user.id)
 
-    #쿼리를 union으로 합침 (중복 제거)
+    #쿼리를 union으로 중복 제거
     query = own_links_query.union(shared_links_query)
     
     if category and category != "전체":

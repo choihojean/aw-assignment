@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchWithAuth, loginUser } from "../services/api";
+import { fetchWithAuth } from "../services/api";
 import { useRouter } from "next/router";
 import { useAuthStore } from "../store/useAuthStore";
 import RegisterModal from "../components/RegisterModal";
@@ -12,7 +12,6 @@ export default function Login() {
     const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
     const router = useRouter();
     const token = useAuthStore((state) => state.token);
-    const setToken = useAuthStore((state) => state.setToken);
 
     useEffect(() => {
         if (token) {

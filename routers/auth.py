@@ -1,5 +1,4 @@
 import jwt
-import os
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -22,15 +21,9 @@ def get_db():
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl = "/auth/login")
 
 def get_current_user(request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get("access_token")  # 쿠키에서 가져옴
+    token = request.cookies.get("access_token")  #쿠키에서 가져옴
 
-    # Authorization 헤더 확인 (없을 경우)
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-
-    print(f"토큰 확인: {token}")  # 👉 디버깅을 위해 추가
+    print(f"토큰: {token}")
 
     if not token or redis_client.get(token):
         raise HTTPException(status_code=401, detail="토큰이 유효하지 않습니다.")
@@ -93,9 +86,9 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         key="access_token", 
         value=access_token, 
         httponly=True, 
-        secure=IS_PRODUCTION,  #개발에서는 http 허용하고 배포 시 https만 허용용
+        secure=IS_PRODUCTION,
         samesite="Lax", 
-        max_age=3600  #1시간 유지
+        max_age=3600
     )
     
     return response
@@ -104,15 +97,14 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 def logout(request: Request):
     token = request.cookies.get("access_token")
 
-    print(f"로그아웃 요청 토큰: {token}")  # 👉 디버깅을 위해 추가
+    print(f"로그아웃 요청 토큰: {token}")
 
     if not token or redis_client.get(token):
         raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
 
-    # 토큰을 블랙리스트에 추가 (1시간 동안 무효화)
+    #토큰 블랙리스트에 추가 (1시간 동안 무효화)
     redis_client.setex(token, 3600, "blacklisted")
 
-    # 쿠키에서 삭제
     response = JSONResponse(content={"message": "로그아웃 성공"})
     response.delete_cookie("access_token")
 
@@ -121,14 +113,8 @@ def logout(request: Request):
 
 @router.get("/me")
 def get_me(request: Request, db: Session = Depends(get_db)):
-    # 1. 쿠키에서 access_token 확인
+    #쿠키에서 access_token 확인
     token = request.cookies.get("access_token")
-
-    # 2. Authorization 헤더에서 access_token 확인
-    if not token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
 
     if not token or redis_client.get(token):
         raise HTTPException(status_code=401, detail="토큰이 유효하지 않습니다")
