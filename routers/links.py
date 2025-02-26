@@ -82,8 +82,11 @@ def unshare_link(link_id: int, db: Session = Depends(get_db), current_user: User
 @router.get("/", response_model=list[LinkResponse])
 def get_links(db: Session = Depends(get_db), current_user: User = Depends(get_current_user), category: Optional[str] = Query(None, title="카테고리 필터")):
 
-    query = db.query(Link).filter((Link.created_by == current_user.id) | 
-                                  (Link.id.in_(db.query(LinkPermission.link_id).filter(LinkPermission.user_id == current_user.id))))
+    own_links_query = db.query(Link).filter(Link.created_by == current_user.id)
+    shared_links_query = db.query(Link).join(LinkPermission).filter(LinkPermission.user_id == current_user.id)
+
+    #쿼리를 union으로 합침 (중복 제거)
+    query = own_links_query.union(shared_links_query)
     
     if category and category != "전체":
         query = query.filter(Link.category == category)
@@ -141,7 +144,8 @@ def update_link(link_id: int, link_data: LinkUpdate, db: Session = Depends(get_d
         if not has_write_permission:
             raise HTTPException(status_code=403, detail="수정 권한이 없습니다")
     
-    for key, value in link_data.dict(exclude_unset=True).items():
+    update_data = link_data.dict(exclude_unset=True, exclude_none=True)
+    for key, value in update_data.items():
         setattr(link, key, value)
     db.commit()
     db.refresh(link)

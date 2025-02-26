@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { loginUser } from "../services/api";
+import { fetchWithAuth, loginUser } from "../services/api";
 import { useRouter } from "next/router";
 import { useAuthStore } from "../store/useAuthStore";
 import RegisterModal from "../components/RegisterModal";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export default function Login() {
     const [username, setUsername] = useState("");
@@ -19,12 +21,23 @@ export default function Login() {
     }, [token, router])
 
     const handleLogin = async () => {
-        const res = await loginUser(username, password);
-        if (res.access_token) {
-            setToken(res.access_token);
-            router.push("/dashboard");
+        const res = await fetchWithAuth(`${API_BASE_URL}/auth/login`, {
+            method: "POST",
+            headers: {"Content-Type": "application/x-www-form-urlencoded"},
+            body: new URLSearchParams({username, password}),
+        });
+
+        if (res.ok) {
+            // 로그인 성공 후 유저 정보 가져오기
+            const userData = await fetchWithAuth(`${API_BASE_URL}/auth/me`).then(res => res.json());
+            if (userData.username) {
+                await useAuthStore.getState().setToken("logged_in");
+                router.push("/dashboard");
+            } else {
+                alert("유저 정보 로드 실패");
+            }
         } else {
-            alert("로그인에 실패했습니다");
+            alert("로그인 실패");
         }
     };
 

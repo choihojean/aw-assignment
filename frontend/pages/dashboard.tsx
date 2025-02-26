@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { getAuthHeaders, fetchLinks, createLink, deleteLink, shareLink, searchLinks, updateLink, getUser, logoutUser, getCategories  } from "../services/api";
+import { fetchWithAuth, fetchLinks, createLink, deleteLink, shareLink, searchLinks, updateLink, getUser, logoutUser, getCategories  } from "../services/api";
 import { useAuthStore } from "../store/useAuthStore";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -51,11 +51,8 @@ export default function Dashboard() {
             //공유된 링크의 권한 정보 가져오기
             const permissionsData = await Promise.all(
                 data.map(async (link: LinkResponse) => {
-                    const res = await fetch(`${API_BASE_URL}/links/${link.id}/permissions`, {
-                        headers: getAuthHeaders(),
-                    });
-                    if (!res.ok) return null;
-                    return res.json();
+                    const res = await fetchWithAuth(`${API_BASE_URL}/links/${link.id}/permissions`);
+                    return res.ok ? res.json() : null;
                 })
             );
     
@@ -69,11 +66,6 @@ export default function Dashboard() {
 
 
     useEffect(() => {
-        if (!token) {
-            router.push("/login");
-            return;
-        }
-
         getUser().then((data) => {
             if (data.username) {
                 setUsername(data.username);
@@ -82,6 +74,7 @@ export default function Dashboard() {
                 fetchAllLinks();
             } else {
                 useAuthStore.getState().logout();
+                router.push("/login");
             }
         });
     }, []);
@@ -133,9 +126,8 @@ export default function Dashboard() {
             if (createdBy === userId) {
                 await deleteLink(id);
             } else {
-                await fetch(`${API_BASE_URL}/links/${id}/unshare`, {
+                await fetchWithAuth(`${API_BASE_URL}/links/${id}/unshare`, {
                     method: "POST",
-                    headers: getAuthHeaders(),
                 });
             }
     

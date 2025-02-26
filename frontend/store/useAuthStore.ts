@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { useEffect } from "react";
-import { getUser } from "../services/api";
+import { fetchWithAuth, getUser } from "../services/api";
+
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 interface AuthState {
     token: string | null;
@@ -20,13 +23,20 @@ export const useAuthStore = create<AuthState>((set) => ({
 
 export const useLoadAuth = () => {
     useEffect(() => {
-        getUser().then((data) => {
-            if (data?.username) {
-                useAuthStore.getState().setToken(data.token);
-            }
-        })
-        .catch(() => {
-            useAuthStore.getState().logout();
-        });
+        fetchWithAuth(`${API_BASE_URL}/auth/me`)
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.username) {
+                    console.log("로그인 유지:", data.username);
+                    useAuthStore.getState().setToken("logged_in");
+                } else {
+                    console.log("세션 만료");
+                    useAuthStore.getState().logout();
+                }
+            })
+            .catch(() => {
+                console.log("인증실패");
+                useAuthStore.getState().logout();
+            });
     }, []);
-};
+}
