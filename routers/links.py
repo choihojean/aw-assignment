@@ -105,14 +105,25 @@ def get_link_permissions(link_id: int, db: Session = Depends(get_db), current_us
 @router.get("/search", response_model = List[LinkResponse])
 def search_links(db: Session = Depends(get_db), current_user: User = Depends(get_current_user), 
                  query: Optional[str] = Query(None, title="검색", description="이름 또는 URL 검색"), category: Optional[str] = Query(None, title="카테고리", description="특정 카테고리")):
-    filters = [Link.created_by == current_user.id]
+    #내가 생성한 링크
+    own_links_query = db.query(Link).filter(Link.created_by == current_user.id)
+
+    #공유받은 링크
+    shared_links_query = (
+        db.query(Link)
+        .join(LinkPermission, LinkPermission.link_id == Link.id)
+        .filter(LinkPermission.user_id == current_user.id)
+    )
+
+    #union
+    query_result = own_links_query.union(shared_links_query)
+
     if query:
-        filters.append(Link.name.ilike(f"%{query}%") | Link.url.ilike(f"%{query}"))
+        query_result = query_result.filter(Link.name.ilike(f"%{query}%") | Link.url.ilike(f"%{query}%"))
     if category:
-        filters.append(Link.category == category)
+        query_result = query_result.filter(Link.category == category)
 
-    links = db.query(Link).filter(*filters).all()
-
+    links = query_result.all()
     return links
 
 #카테고리 가져오기
